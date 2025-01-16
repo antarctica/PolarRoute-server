@@ -65,11 +65,22 @@ def route_exists(
     for mesh in meshes:
         same_mesh_routes = Route.objects.filter(mesh=mesh)
 
+        # use set to preserve uniqueness
+        successful_route_ids = set()
+        # remove any failed routes
+        for route in same_mesh_routes:
+            # job_set can't be filtered since status is a property method
+            for job in route.job_set.all():
+                if job.status != "FAILURE":
+                    successful_route_ids.add(route.id)
+
+        successful_routes = same_mesh_routes.filter(id__in=successful_route_ids)
+
         # if there are none return None
-        if len(same_mesh_routes) == 0:
+        if len(successful_routes) == 0:
             continue
         else:
-            exact_routes = same_mesh_routes.filter(
+            exact_routes = successful_routes.filter(
                 start_lat=start_lat,
                 start_lon=start_lon,
                 end_lat=end_lat,

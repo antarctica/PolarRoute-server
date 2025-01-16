@@ -1,12 +1,15 @@
 import datetime
 import hashlib
+from unittest.mock import patch, PropertyMock
+import uuid
 
+import celery
 from django.conf import settings
 from django.test import TestCase
 from django.utils import timezone
 from haversine import inverse_haversine, Unit, Direction
 
-from polarrouteserver.route_api.models import Mesh, Route
+from polarrouteserver.route_api.models import Mesh, Job, Route
 from polarrouteserver.route_api.utils import route_exists, select_mesh
 from .utils import add_test_mesh_to_db
 
@@ -32,28 +35,55 @@ class TestRouteExists(TestCase):
             mesh=self.mesh
         )
 
+        self.job = Job.objects.create(id=uuid.uuid1(),route=self.route)
+
     def test_route_exists(self):
         "Test case where exact requested route exists"
-
-        route = route_exists(
-            self.mesh,
-            start_lat=self.start_lat,
-            start_lon=self.start_lon,
-            end_lat=self.end_lat,
-            end_lon=self.end_lon,
-        )
+        with patch(
+            "polarrouteserver.route_api.views.AsyncResult.state", new_callable=PropertyMock
+        ) as mock_job_status:
+            mock_job_status.return_value = celery.states.SUCCESS
+        
+            route = route_exists(
+                self.mesh,
+                start_lat=self.start_lat,
+                start_lon=self.start_lon,
+                end_lat=self.end_lat,
+                end_lon=self.end_lon,
+            )
         assert route == self.route
+
+    def test_failed_route_exists(self):
+        "Test case where exact requested route exists, but has failed."
+        with patch(
+            "polarrouteserver.route_api.views.AsyncResult.state", new_callable=PropertyMock
+        ) as mock_job_status:
+            mock_job_status.return_value = celery.states.FAILURE
+        
+            route = route_exists(
+                self.mesh,
+                start_lat=self.start_lat,
+                start_lon=self.start_lon,
+                end_lat=self.end_lat,
+                end_lon=self.end_lon,
+            )
+        assert route == None
 
     def test_no_route_exists(self):
         "Test case where no similar route exists"
 
-        route = route_exists(
-            self.mesh,
-            start_lat=0,
-            start_lon=0,
-            end_lat=0,
-            end_lon=0,
-        )
+        with patch(
+            "polarrouteserver.route_api.views.AsyncResult.state", new_callable=PropertyMock
+        ) as mock_job_status:
+            mock_job_status.return_value = celery.states.SUCCESS
+
+            route = route_exists(
+                self.mesh,
+                start_lat=0,
+                start_lon=0,
+                end_lat=0,
+                end_lon=0,
+            )
         assert route is None
 
     def test_exact_route_returned(self):
@@ -74,7 +104,7 @@ class TestRouteExists(TestCase):
         )
 
         # create another nearby route
-        Route.objects.create(
+        nearby_route = Route.objects.create(
             calculated=timezone.now(),
             start_lat=in_tolerance_start[0],
             start_lon=in_tolerance_start[1],
@@ -83,13 +113,20 @@ class TestRouteExists(TestCase):
             mesh=self.mesh
         )
 
-        route = route_exists(
-            self.mesh,
-            start_lat=self.start_lat,
-            start_lon=self.start_lon,
-            end_lat=self.end_lat,
-            end_lon=self.end_lon,
-        )
+        Job.objects.create(id=uuid.uuid1(), route=nearby_route)
+
+        with patch(
+            "polarrouteserver.route_api.views.AsyncResult.state", new_callable=PropertyMock
+        ) as mock_job_status:
+            mock_job_status.return_value = celery.states.SUCCESS
+
+            route = route_exists(
+                self.mesh,
+                start_lat=self.start_lat,
+                start_lon=self.start_lon,
+                end_lat=self.end_lat,
+                end_lon=self.end_lon,
+            )
         assert route == self.route
 
         ### Test that closest of multiple routes is the one returned if no exact route is found
@@ -119,14 +156,21 @@ class TestRouteExists(TestCase):
             mesh=self.mesh
         )
 
-        # search for route with no exact match
-        route = route_exists(
-            self.mesh,
-            start_lat=self.start_lat,
-            start_lon=self.start_lon,
-            end_lat=self.end_lat,
-            end_lon=self.end_lon,
-        )
+        Job.objects.create(id=uuid.uuid1(), route=closest_route)
+
+        with patch(
+            "polarrouteserver.route_api.views.AsyncResult.state", new_callable=PropertyMock
+        ) as mock_job_status:
+            mock_job_status.return_value = celery.states.SUCCESS
+
+            # search for route with no exact match
+            route = route_exists(
+                self.mesh,
+                start_lat=self.start_lat,
+                start_lon=self.start_lon,
+                end_lat=self.end_lat,
+                end_lon=self.end_lon,
+            )
         assert route == closest_route
 
 class TestSelectMesh(TestCase):
