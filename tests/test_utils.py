@@ -1,13 +1,15 @@
 import datetime
 import hashlib
+import json
 
 from django.conf import settings
 from django.test import TestCase
 from django.utils import timezone
 from haversine import inverse_haversine, Unit, Direction
+import pytest
 
 from polarrouteserver.route_api.models import Mesh, Route
-from polarrouteserver.route_api.utils import route_exists, select_mesh
+from polarrouteserver.route_api.utils import evaluate_route, route_exists, select_mesh, select_mesh_for_route_evaluation
 from .utils import add_test_mesh_to_db
 
 class TestRouteExists(TestCase):
@@ -200,3 +202,26 @@ class TestSelectMesh(TestCase):
             end_lat   = -80,
             end_lon   = -110
         ) == [self.smallest_mesh, self.smaller_mesh, self.southern_mesh]
+
+    def test_select_mesh_for_route_evaluation(self):
+
+        self.mesh_for_evaluation = add_test_mesh_to_db()
+
+        with open(settings.TEST_ROUTE_PATH) as fp:
+            self.route_json = json.load(fp)
+
+        assert select_mesh_for_route_evaluation(self.route_json) == [self.mesh_for_evaluation]
+
+@pytest.mark.django_db
+def test_evaluate_route():
+    add_test_mesh_to_db()
+
+    with open(settings.TEST_ROUTE_PATH) as fp:
+        route_json = json.load(fp)
+
+    mesh = select_mesh_for_route_evaluation(route_json)
+
+    assert mesh is not None
+
+    result = evaluate_route(route_json, mesh[0])
+    assert isinstance(result, dict)

@@ -12,7 +12,12 @@ from polarrouteserver.celery import app
 from .models import Job, Route, Mesh
 from .tasks import optimise_route
 from .serializers import RouteSerializer
-from .utils import route_exists, select_mesh
+from .utils import (
+    evaluate_route,
+    route_exists,
+    select_mesh,
+    select_mesh_for_route_evaluation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -302,4 +307,32 @@ class MeshView(LoggingMixin, GenericAPIView):
             data,
             headers={"Content-Type": "application/json"},
             status=status,
+        )
+
+
+class EvaluateRouteView(LoggingMixin, GenericAPIView):
+    def post(self, request):
+        data = request.data
+        route_json = data.get("route", None)
+        custom_mesh_id = data.get("custom_mesh_id", None)
+
+        if custom_mesh_id:
+            try:
+                mesh = Mesh.objects.get(id=custom_mesh_id)
+                meshes = [mesh]
+            except Mesh.DoesNotExist:
+                return Response(
+                    {"error": f"Mesh with id {custom_mesh_id} not found."},
+                    headers={"Content-Type": "application/json"},
+                    status=rest_framework.status.HTTP_204_NO_CONTENT,
+                )
+        else:
+            meshes = select_mesh_for_route_evaluation(route_json)
+
+        result_dict = evaluate_route(route_json, meshes[0])
+
+        return Response(
+            result_dict,
+            headers={"Content-Type": "application/json"},
+            status=rest_framework.status.HTTP_200_OK,
         )

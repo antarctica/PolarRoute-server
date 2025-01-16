@@ -77,6 +77,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/mesh-response'
           description: ''
+  /api/evaluate_route:
+    post:
+      operationId: api_route_evaluation
+      description: Entry point for requests to evaluate a pre-existing GeoJSON route
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/route-evaluation-request'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/route-evaluation-response'
+          description: ''
+
 components:
   schemas:
     route-request:
@@ -142,4 +162,27 @@ components:
           type: object
         geojson: 
           type: object
+    
+    route-evaluation-request:
+      type: object
+      properties:
+        route:
+          type: object
+        custom_mesh_id:
+          type: integer
+      required:
+      - route
+    
+    route-evaluation-response:
+      type: object
+      properties:
+        route:
+          type: object
+        fuel:
+          type: number
+        time_hours:
+          type: number
+        time_str:
+          type: string
+
 

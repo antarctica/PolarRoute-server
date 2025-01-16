@@ -1,9 +1,14 @@
 import hashlib
+import json
 import logging
+import os
+from tempfile import NamedTemporaryFile
 from typing import Union
 
 from django.conf import settings
 import haversine
+from polar_route.route_calc import route_calc
+from polar_route.utils import convert_decimal_days
 
 from .models import Mesh, Route
 
@@ -152,3 +157,66 @@ def calculate_md5(filename):
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
+
+def evaluate_route(route_json: dict, mesh: Mesh) -> dict:
+    """Run calculate_route method from PolarRoute to evaluate the fuel usage and travel time of a route.
+
+    Args:
+        route_json (dict): route to evaluate in geojson format.
+        mesh (polarrouteserver.models.Mesh): mesh object on which to evaluate the route.
+
+    Returns:
+        dict: evaluated route
+    """
+
+    if route_json["features"][0].get("properties", None) is None:
+        route_json["features"][0]["properties"] = {"from": "Start", "to": "End"}
+
+    # route_calc only supports files, write out both route and mesh as temporary files
+    route_file = NamedTemporaryFile(delete=False, suffix=".json")
+    with open(route_file.name, "w") as fp:
+        json.dump(route_json, fp)
+
+    mesh_file = NamedTemporaryFile(delete=False, suffix=".json")
+    with open(mesh_file.name, "w") as fp:
+        json.dump(mesh.json, fp)
+
+    try:
+        calc_route = route_calc(route_file.name, mesh_file.name)
+    except Exception as e:
+        logger.error(e)
+        return None
+    finally:
+        for file in (route_file, mesh_file):
+            try:
+                os.remove(file.name)
+            except Exception as e:
+                logger.warning(f"{file} not removed due to {e}")
+
+    time_days = calc_route["features"][0]["properties"]["traveltime"][-1]
+    time_str = convert_decimal_days(time_days)
+    fuel = round(calc_route["features"][0]["properties"]["fuel"][-1], 2)
+
+    return dict(
+        route=calc_route, time_days=time_days, time_str=time_str, fuel_tonnes=fuel
+    )
+
+
+def select_mesh_for_route_evaluation(route: dict) -> Union[list[Mesh], None]:
+    """Select a mesh from the database to be used for route evaluation.
+    The latest mesh containing all points in the route will be chosen.
+    If no suitable meshes are available, return None.
+
+    Args:
+        route (dict): GeoJSON route to be evaluated.
+
+    Returns:
+        Union[Mesh,None]: Selected mesh object or None.
+    """
+
+    coordinates = route["features"][0]["geometry"]["coordinates"]
+    lats = [c[0] for c in coordinates]
+    lons = [c[1] for c in coordinates]
+
+    return select_mesh(min(lats), min(lons), max(lats), max(lons))

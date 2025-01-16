@@ -3,6 +3,7 @@ from pathlib import Path
 from .base import *
 
 TEST_MESH_PATH = Path("tests", "fixtures", "test_vessel_mesh.json")
+TEST_ROUTE_PATH = Path("tests", "fixtures", "test_route.json")
 MESH_DIR = Path("tests", "fixtures")
 MESH_METADATA_DIR = MESH_DIR
 

@@ -30,4 +30,7 @@ urlpatterns = [
     ),  # url for retrieving routes (get)
     path("api/recent_routes", views.RecentRoutesView.as_view(), name="recent_routes"),
     path("api/mesh/<int:id>", views.MeshView.as_view(), name="mesh"),
+    path(
+        "api/evaluate_route", views.EvaluateRouteView.as_view(), name="evaluate_route"
+    ),
 ]

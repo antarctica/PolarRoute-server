@@ -7,7 +7,7 @@ from django.test import TestCase
 from rest_framework.test import APIRequestFactory
 import pytest
 
-from polarrouteserver.route_api.views import MeshView, RouteView, RecentRoutesView
+from polarrouteserver.route_api.views import EvaluateRouteView, MeshView, RouteView, RecentRoutesView
 from polarrouteserver.route_api.models import Job, Route
 from .utils import add_test_mesh_to_db
 
@@ -60,6 +60,16 @@ class TestRouteRequest(TestCase):
         assert response.data.get('id') == response2.data.get('id')
         assert f"api/route/{response.data.get('id')}" in response2.data.get("status-url")
 
+    def test_evaluate_route(self):
+        with open(settings.TEST_ROUTE_PATH) as fp:
+            route_json = json.load(fp)
+
+        data=dict(route=route_json)
+
+        request = self.factory.post("/api/evaluate_route/", data=data, format="json")
+
+        response = EvaluateRouteView.as_view()(request)
+        self.assertEqual(response.status_code, 200)
 
 pytestmark = pytest.mark.django_db
 
